@@ -1,10 +1,69 @@
 services:
+  pingauthorizepap:
+    container_name: dpq-pingauthorizepap
+    image: pingidentity/pingauthorizepap:edge
+    ports:
+      - "8443:1443/tcp"
+    env_file:
+      - .env/pingdevops.yaml
+    environment:
+      PING_IDENTITY_ACCEPT_EULA: YES 
+      PING_EXTERNAL_BASE_URL: localhost:8443
+      PING_POLICY_DB_SYNC: true 
+      PING_DB_CONNECTION_STRING: jdbc:postgresql://db.localdev:5432/pap
+      PING_DB_ADMIN_USERNAME: pap
+      PING_DB_ADMIN_PASSWORD: Passw0rd
+      PING_DB_APP_USERNAME: pap_user
+      PING_DB_APP_PASSWORD: Passw0rd
+    networks:
+      localdev:
+        aliases: 
+        - pingauthorizepap.localdev
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:15.1
+    container_name: dpq-db
+    environment:
+      POSTGRES_DB: ${PAP_PG_DATABASE:-pap}
+      POSTGRES_USER: ${PAP_PG_USER:-pap}
+      POSTGRES_PASSWORD_FILE: /run/secrets/pap_postgres_password
+    secrets:
+      - pap_postgres_password
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-d",
+          "${PAP_PG_DATABASE:-pap}",
+          "-U",
+          "${PAP_PG_USER:-pap}"
+        ]
+      interval: 10s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    restart: on-failure
+    stdin_open: true
+    tty: true
+    ports:
+      - 5432:5432/tcp
+    networks:
+      localdev:
+        aliases:
+        - db.localdev
+    volumes:
+      - pap_data:/var/lib/postgresql/data
+      - ./docker/postgres/init-database.sh:/docker-entrypoint-initdb.d/init-database.sh
   pingauthorize:
     container_name: dpq-pingauthorize
     image: pingidentity/pingauthorize:edge
     ports:
-      - "1389:1389/tcp"
-      - "8443:1443/tcp"
+      - "28443:1443/tcp"
+    env_file:
+      - .env/pingdevops.yaml
     environment:
       SERVER_PROFILE_URL: https://github.com/pingidentity/pingidentity-server-profiles.git
       SERVER_PROFILE_PATH: getting-started/pingauthorize 
@@ -13,5 +72,37 @@ services:
       localdev:
         aliases: 
         - pingauthorize.localdev
+  pingdataconsole:
+    container_name: dpq-pingdataconsole
+    image: pingidentity/pingdataconsole:edge
+    ports:
+      - "38443:8443/tcp"
+    env_file:
+      - .env/pingdevops.yaml
+    environment:
+      PING_IDENTITY_ACCEPT_EULA: YES 
+    networks:
+      localdev:
+  pingdirectory:
+    container_name: dpq-pingdirectory
+    image: pingidentity/pingdirectory:edge
+    ports:
+      - "1389:1389/tcp"
+      - "18443:1443/tcp"
+    env_file:
+      - .env/pingdevops.yaml
+    environment:
+      SERVER_PROFILE_URL: https://github.com/pingidentity/pingidentity-server-profiles.git
+      SERVER_PROFILE_PATH: getting-started/pingdirectory 
+      PING_IDENTITY_ACCEPT_EULA: YES 
+    networks:
+      localdev:
+        aliases: 
+        - pingdirectory.localdev
 networks:
   localdev:
+volumes:
+  pap_data:
+secrets:
+  pap_postgres_password:
+    file: .env/POSTGRES_PASSWORD
