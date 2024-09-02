@@ -1,0 +1,6 @@
+# docker pingauthorize quickstart
+
+
+```console
+docker compose up
+```
